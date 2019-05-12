@@ -5,7 +5,9 @@ volumes:
     grafana_data: {}
 
 networks:
-  front-tier:
+  web:
+    external: 
+      name: web
   back-tier:
 
 services:
@@ -20,8 +22,8 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
-    ports:
-      - 9090:9090
+    #ports:
+    #  - 9090:9090
     links:
       - cadvisor:cadvisor
       - alertmanager:alertmanager
@@ -35,6 +37,29 @@ services:
 #        constraints:
 #          - node.hostname == ${HOSTNAME}
 
+  prometheus-proxy:
+    image: jboss/keycloak-proxy:3.4.2.Final
+    restart: always
+    environment: 
+      TARGET_URL: http://prometheus:9090
+      HTTP_PORT: 8180
+      HTTPS_PORT: 8443
+      BASE_PATH: /
+      REALM_NAME: REALNAME
+      AUTH_SERVER_URL: https://login.example.com/auth
+      CLIENT_ID: prometheus
+      ROLE_ALLOWED: view
+      SSL_REQUIRED: external
+    volumes: 
+      - ./keycloak-proxy/conf:/opt/jboss/conf
+    labels:
+      - traefik.enable=true
+      - traefik.frontend.rule=Host:prometheus.smartpage.com.de
+      - traefik.port=8180
+    networks:
+      - back-tier
+      - web
+
   node-exporter:
     image: prom/node-exporter
     volumes:
@@ -46,8 +71,8 @@ services:
       - '--path.sysfs=/host/sys'
       - --collector.filesystem.ignored-mount-points
       - "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)"
-    ports:
-      - 9100:9100
+    #ports:
+    #  - 9100:9100
     networks:
       - back-tier
     restart: always
@@ -56,8 +81,8 @@ services:
 
   alertmanager:
     image: prom/alertmanager
-    ports:
-      - 9093:9093
+    #ports:
+    #  - 9093:9093
     volumes:
       - ./alertmanager/:/etc/alertmanager/
     networks:
@@ -70,6 +95,29 @@ services:
 #      placement:
 #        constraints:
 #          - node.hostname == ${HOSTNAME}
+  alertmanager-proxy:
+    image: jboss/keycloak-proxy:3.4.2.Final
+    restart: always
+    environment: 
+      TARGET_URL: http://alertmanager:9093
+      HTTP_PORT: 8180
+      HTTPS_PORT: 8443
+      BASE_PATH: /
+      REALM_NAME: REALNAME
+      AUTH_SERVER_URL: https://login.example.com/auth
+      CLIENT_ID: prometheus
+      ROLE_ALLOWED: alert
+      SSL_REQUIRED: external
+    volumes: 
+      - ./keycloak-proxy/conf:/opt/jboss/conf
+    labels:
+      - traefik.enable=true
+      - traefik.frontend.rule=Host:prometheus.smartpage.com.de
+      - traefik.port=8180
+    networks:
+      - back-tier
+      - web
+
   cadvisor:
     image: google/cadvisor
     volumes:
@@ -77,28 +125,54 @@ services:
       - /var/run:/var/run:rw
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
-    ports:
-      - 8080:8080
+    #ports:
+    #  - 8080:8080
     networks:
       - back-tier
     restart: always
     deploy:
       mode: global
+  cadvisor-proxy:
+    image: jboss/keycloak-proxy:3.4.2.Final
+    restart: always
+    environment: 
+      TARGET_URL: http://cadvisor:8080
+      HTTP_PORT: 8180
+      HTTPS_PORT: 8443
+      BASE_PATH: /
+      REALM_NAME: REALNAME
+      AUTH_SERVER_URL: https://login.example.com/auth
+      CLIENT_ID: cadvisor
+      ROLE_ALLOWED: view
+      SSL_REQUIRED: external
+    volumes: 
+      - ./keycloak-proxy/conf:/opt/jboss/conf
+    labels:
+      - traefik.enable=true
+      - traefik.frontend.rule=Host:prometheus.smartpage.com.de
+      - traefik.port=8180
+    networks:
+      - back-tier
+      - web
 
   grafana:
     image: grafana/grafana
     user: "104"
     depends_on:
       - prometheus
-    ports:
-      - 3000:3000
+    #ports:
+    #  - 3000:3000
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning/:/etc/grafana/provisioning/
     env_file:
       - ./grafana/config.monitoring
+    labels:
+      - traefik.enable=true
+      - traefik.frontend.rule=Host:graf.smartpage.com.de
+      - traefik.port=3000
     networks:
       - back-tier
-      - front-tier
+      - web
     restart: always
 
